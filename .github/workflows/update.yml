@@ -2,7 +2,7 @@ name: 금리 업데이트
 
 on:
   schedule:
-    - cron: "0 22 * * *"   # 매일 한국시간 아침 7시 (UTC 22시)
+    - cron: "30 23 * * *"   # 매일 한국시간 아침 8시 30분 (UTC 23시 30분)
   workflow_dispatch:        # Actions 탭에서 'Run workflow'로 바로 실행
 
 permissions:
