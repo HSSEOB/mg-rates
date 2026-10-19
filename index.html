@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="금리비교">
+<title>금정구 금고 창구금리</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;700&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: one column ledger — header, product switch, sortable rate table, notes */
+:root{
+  --bg:#f5f7f6; --surface:#ffffff; --fg:#17201d; --muted:#5d6b66; --line:#dde4e1;
+  --accent:#0a6e5c; --accent-soft:#e0f1ec; --hot:#b4462a; --hot-soft:#fbe9e3;
+  --f-body:"IBM Plex Sans KR",-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --f-num:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#101614; --surface:#17201d; --fg:#e6ece9; --muted:#97a6a0; --line:#2a3632;
+  --accent:#4fc3a8; --accent-soft:#183a32; --hot:#f08a6c; --hot-soft:#3a221b; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#101614; --surface:#17201d; --fg:#e6ece9; --muted:#97a6a0; --line:#2a3632;
+  --accent:#4fc3a8; --accent-soft:#183a32; --hot:#f08a6c; --hot-soft:#3a221b; color-scheme:dark}
+html{padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:15px;line-height:1.5}
+.wrap{max-width:860px;margin:0 auto;padding-block:20px 40px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  display:flex;flex-direction:column;gap:18px}
+header{display:flex;flex-direction:column;gap:4px}
+h1{margin:0;font-size:1.45rem;font-weight:700;text-wrap:balance}
+.meta{color:var(--muted);font-size:.85rem}
+.meta b{color:var(--fg);font-weight:500}
+.switch{display:flex;gap:6px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:4px;width:fit-content}
+.switch button{font:inherit;font-weight:500;border:0;background:transparent;color:var(--muted);padding:8px 16px;border-radius:7px;cursor:pointer}
+.switch button[aria-pressed="true"]{background:var(--accent);color:var(--bg)}
+.switch button:focus-visible,th button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.picks{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+.pick{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.pick .k{font-size:.75rem;color:var(--muted);letter-spacing:.02em}
+.pick .v{font-family:var(--f-num);font-size:1.25rem;color:var(--accent)}
+.pick .n{font-size:.85rem}
+.pick.hot .v{color:var(--hot)}
+.tablebox{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:10px}
+table{border-collapse:collapse;width:100%;min-width:520px;font-variant-numeric:tabular-nums}
+th,td{padding:9px 10px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+th:first-child,td:first-child{text-align:left;position:sticky;left:0;background:var(--surface)}
+thead th{font-size:.78rem;color:var(--muted);font-weight:500}
+th button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+th[aria-sort] button{color:var(--accent);font-weight:700}
+td{font-family:var(--f-num);font-size:.92rem}
+td:first-child{font-family:var(--f-body);font-weight:500}
+td:first-child a{color:var(--fg);text-decoration:none;border-bottom:1px dotted var(--muted)}
+td.best{background:var(--accent-soft);color:var(--accent);font-weight:500}
+td.spike{background:var(--hot-soft);color:var(--hot);font-weight:500}
+td.na{color:var(--muted)}
+.up{color:var(--hot);font-size:.72rem;margin-left:3px}
+.dn{color:var(--accent);font-size:.72rem;margin-left:3px}
+.err{background:var(--hot-soft);color:var(--hot);padding:12px;border-radius:10px}
+tbody tr:last-child td{border-bottom:0}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:.8rem;color:var(--muted)}
+.sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.notes{font-size:.84rem;color:var(--muted);display:flex;flex-direction:column;gap:6px;max-width:65ch}
+.notes p{margin:0}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1 id="h1">새마을금고 창구금리</h1>
+    <div class="meta" id="meta">불러오는 중…</div>
+  </header>
+
+  <div class="switch" role="group" aria-label="상품 선택">
+    <button id="tab-dep" type="button" aria-pressed="true" data-p="dep">정기예탁금</button>
+    <button id="tab-sav" type="button" aria-pressed="false" data-p="sav">정기적금</button>
+  </div>
+
+  <div class="picks" id="picks"></div>
+
+  <div class="tablebox"><table id="tbl"><thead></thead><tbody></tbody></table></div>
+
+  <div class="legend">
+    <span><i class="sw" style="background:var(--accent-soft);border:1px solid var(--accent)"></i>해당 기간 최고</span>
+    <span><i class="sw" style="background:var(--hot-soft);border:1px solid var(--hot)"></i>앞뒤 기간보다 튀는 금리 (특정 기간 집중 유치 가능성)</span>
+    <span>– 해당 기간 상품 없음</span>
+    <span><b class="up">▲</b><b class="dn">▼</b> 직전 조회일 대비 변동</span>
+  </div>
+
+  <div class="notes">
+    <p>정기예탁금은 만기지급식 기준이에요. 금고 이름을 누르면 중앙회 금고위치안내의 원본 금리표가 열려요.</p>
+    <p>금리표는 "N개월 이상" 구간이라, 표에 없는 기간은 바로 아래 구간 금리로 채웠어요. 예를 들어 12개월·24개월 구간만 있는 금고의 13개월은 12개월 금리예요.</p>
+    <p>특판과 우대조건은 이 자료에 안 잡혀요. 출처: 새마을금고중앙회 금고위치안내. 매일 아침 7시쯤 자동 갱신돼요.</p>
+  </div>
+</div>
+
+<script>
+let BANKS = [], DATA = null;
+const COLS = {dep:[1,3,6,12,13,24,36], sav:[6,12,13,24,36]};
+const URLS = {dep:13, sav:14};
+let prod = "dep", sortKey = 12;
+try{ const s = localStorage.getItem("gj-prod"); if(s==="dep"||s==="sav") prod = s; }catch(e){}
+
+// "N개월 이상" tier rule: rate for period p = rate of the largest tier <= p
+function rateAt(tiers,p){
+  let best=null, bk=-1;
+  for(const k in tiers){ const n=+k; if(n<=p && n>bk){bk=n;best=tiers[k];} }
+  return best;
+}
+// a listed tier that beats both neighbours by >= 0.5%p
+function isSpike(tiers,p){
+  if(!(p in tiers)) return false;
+  const ks=Object.keys(tiers).map(Number).sort((a,b)=>a-b), i=ks.indexOf(p);
+  const v=tiers[p], prev=i>0?tiers[ks[i-1]]:null, next=i<ks.length-1?tiers[ks[i+1]]:null;
+  return prev!=null && next!=null && v-prev>=0.5 && v-next>=0.5;
+}
+const fmt = v => v==null ? "–" : v.toFixed(2);
+
+function render(){
+  document.querySelectorAll(".switch button").forEach(b=>b.setAttribute("aria-pressed", b.dataset.p===prod));
+  const cols = COLS[prod];
+  if(!cols.includes(sortKey)) sortKey = 12;
+  const rows = BANKS.map(b=>({b, r:cols.map(p=>rateAt(b[prod],p))}));
+  const si = cols.indexOf(sortKey);
+  rows.sort((a,b)=>(b.r[si]??-1)-(a.r[si]??-1) || a.b.nm.localeCompare(b.b.nm,"ko"));
+  const max = cols.map((_,i)=>Math.max(...rows.map(x=>x.r[i]??-1)));
+
+  const thead = document.querySelector("#tbl thead");
+  thead.innerHTML = "<tr><th>금고</th>" + cols.map(p=>
+    `<th${p===sortKey?' aria-sort="descending"':''}><button type="button" data-k="${p}">${p}개월${p===sortKey?' ↓':''}</button></th>`).join("") + "</tr>";
+  thead.querySelectorAll("button").forEach(btn=>btn.onclick=()=>{sortKey=+btn.dataset.k;render();});
+
+  document.querySelector("#tbl tbody").innerHTML = rows.map(({b,r})=>{
+    const url=`https://www.kfcc.co.kr/map/goods_19.do?OPEN_TRMID=${b.cd}&gubuncode=${URLS[prod]}`;
+    return `<tr><td><a href="${url}" target="_blank" rel="noopener">${b.nm}</a></td>` + r.map((v,i)=>{
+      const p=cols[i];
+      const cls = v==null ? "na" : isSpike(b[prod],p) ? "spike" : (v===max[i] ? "best" : "");
+      let ch="";
+      if(b.prev && v!=null){ const pv=rateAt(b.prev[prod]||{},p); if(pv!=null && Math.abs(v-pv)>=0.005) ch = v>pv?'<b class="up">▲</b>':'<b class="dn">▼</b>'; }
+      return `<td class="${cls}">${fmt(v)}${ch}</td>`;
+    }).join("") + "</tr>";
+  }).join("");
+
+  // highlights
+  const picks=[];
+  const i12=cols.indexOf(12), top12=rows.filter(x=>x.r[i12]===max[i12]).map(x=>x.b.nm);
+  picks.push(`<div class="pick"><span class="k">12개월 최고</span><span class="v">${fmt(max[i12])}%</span><span class="n">${top12.join(", ")}</span></div>`);
+  let sp=null;
+  BANKS.forEach(b=>Object.keys(b[prod]).map(Number).forEach(p=>{ if(isSpike(b[prod],p) && (!sp||b[prod][p]>sp.v)) sp={nm:b.nm,p,v:b[prod][p]}; }));
+  if(sp) picks.push(`<div class="pick hot"><span class="k">튀는 구간</span><span class="v">${fmt(sp.v)}%</span><span class="n">${sp.nm} · ${sp.p}개월</span></div>`);
+  const i36=cols.indexOf(36), top36=rows.filter(x=>x.r[i36]===max[i36]).map(x=>x.b.nm);
+  picks.push(`<div class="pick"><span class="k">36개월 최고</span><span class="v">${fmt(max[i36])}%</span><span class="n">${top36.join(", ")}</span></div>`);
+  const avg = rows.reduce((s,x)=>s+(x.r[i12]||0),0)/rows.filter(x=>x.r[i12]!=null).length;
+  picks.push(`<div class="pick"><span class="k">12개월 평균 (${rows.length}곳)</span><span class="v">${avg.toFixed(2)}%</span><span class="n">금정구 기준</span></div>`);
+  document.getElementById("picks").innerHTML = picks.join("");
+}
+document.querySelectorAll(".switch button").forEach(b=>b.onclick=()=>{
+  prod=b.dataset.p; try{localStorage.setItem("gj-prod",prod);}catch(e){} if(DATA) render();
+});
+function toNum(o){ const r={}; for(const k in (o||{})) r[+k]=+o[k]; return r; }
+fetch("data.json?t="+Date.now()).then(r=>{ if(!r.ok) throw new Error(r.status); return r.json(); }).then(d=>{
+  DATA=d;
+  BANKS=d.banks.filter(b=>Object.keys(b.dep||{}).length||Object.keys(b.sav||{}).length).map(b=>({
+    cd:b.cd, nm:b.nm + (b.type==="직장"?" (직장)":""), dep:toNum(b.dep), sav:toNum(b.sav),
+    prev:b.prev?{dep:toNum(b.prev.dep),sav:toNum(b.prev.sav)}:null }));
+  document.getElementById("h1").textContent = (d.regions||[]).map(x=>x.split(" ").pop()).join("·")+" 새마을금고 창구금리";
+  document.getElementById("meta").innerHTML = `조회기준일 <b>${(d.baseDate||"").replaceAll("/",".")}</b> · 창구 기본이율 · 세전 연이율 · 우대금리 제외`;
+  render();
+}).catch(e=>{
+  document.getElementById("meta").innerHTML='<div class="err">data.json을 아직 못 불러왔어요. GitHub Actions에서 "금리 업데이트"를 한 번 실행해 주세요.</div>';
+});
+</script>
+
+</body>
+</html>
