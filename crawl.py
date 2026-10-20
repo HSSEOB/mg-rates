@@ -29,21 +29,44 @@ FALLBACK_BANKS = {
 }
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "ko-KR,ko;q=0.9,en;q=0.5",
+    "Content-Type": "application/x-www-form-urlencoded",
+    "Referer": "https://www.kfcc.co.kr/map/main.do",
 }
 KST = timezone(timedelta(hours=9))
+SESSION = requests.Session()
+SESSION.headers.update(HEADERS)
+_warmed = False
+
+
+def warm_up():
+    """사람처럼 첫 화면부터 열어서 접속 쿠키를 받아둬요."""
+    global _warmed
+    if _warmed:
+        return
+    _warmed = True
+    for u in ("https://www.kfcc.co.kr/", f"{BASE}/main.do"):
+        try:
+            SESSION.get(u, timeout=20)
+        except Exception as e:
+            print(f"  첫 화면 접속 실패(무시): {e}", file=sys.stderr)
+        time.sleep(1)
 
 
 def get(url, params, tries=3):
+    warm_up()
+    waits = [5, 20, 60]
     for i in range(tries):
         try:
-            r = requests.get(url, params=params, headers=HEADERS, timeout=20)
+            r = SESSION.get(url, params=params, timeout=20)
             r.raise_for_status()
             r.encoding = r.apparent_encoding or "utf-8"
             return r.text
-        except Exception as e:  # 가끔 실패해서 재시도
+        except Exception as e:  # 가끔 실패해서 점점 길게 쉬었다가 재시도
             print(f"  재시도 {i + 1}/{tries}: {e}", file=sys.stderr)
-            time.sleep(3)
+            time.sleep(waits[min(i, len(waits) - 1)])
     raise RuntimeError(f"요청 실패: {url} {params}")
 
 
@@ -129,9 +152,22 @@ def main():
         banks += lst
 
     base_date = ""
+    fails_in_a_row = 0
     for b in banks:
         for key, (name, gubun) in PRODUCTS.items():
-            html = get(f"{BASE}/goods_19.do", {"OPEN_TRMID": b["cd"], "gubuncode": gubun})
+            try:
+                html = get(f"{BASE}/goods_19.do", {"OPEN_TRMID": b["cd"], "gubuncode": gubun})
+                fails_in_a_row = 0
+            except Exception as e:
+                fails_in_a_row += 1
+                print(f"  {b['nm']} {name} 실패: {e}", file=sys.stderr)
+                if fails_in_a_row >= 3:
+                    sys.exit("중앙회 사이트가 연달아 접속을 거절했어요. 기존 페이지는 그대로 두고 멈춰요. "
+                             "보통 사이트 쪽 일시 문제라 다음 실행 때 다시 시도돼요.")
+                # 이 금고만 어제 값 유지
+                b[key] = (old_rates.get(b["cd"]) or {}).get(key, {})
+                b["stale"] = True
+                continue
             tiers, d = parse_rates(html, name)
             b[key] = {str(k): v for k, v in sorted(tiers.items())}
             base_date = base_date or d
@@ -145,7 +181,7 @@ def main():
         elif prev and "prev" in prev:
             b["prev"], b["prevDate"] = prev["prev"], prev.get("prevDate", "")
 
-    if not any(b["dep"] or b["sav"] for b in banks):
+    if not base_date or not any(b["dep"] or b["sav"] for b in banks):
         sys.exit("금리를 하나도 못 읽었어요. 사이트 구조가 바뀌었을 수 있어요.")
 
     out = {
