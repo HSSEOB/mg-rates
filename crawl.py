@@ -16,6 +16,17 @@ REGIONS = [("부산", "금정구")]
 PRODUCTS = {"dep": ("정기예탁금", 13), "sav": ("정기적금", 14)}  # 키: (상품명, gubuncode)
 
 BASE = "https://www.kfcc.co.kr/map"
+
+# 중앙회 목록 페이지가 오류 날 때 쓰는 예비 명단 (금고코드, 이름)
+FALLBACK_BANKS = {
+    ("부산", "금정구"): [
+        {"cd": c, "nm": n, "type": "지역"} for c, n in [
+            ("1701", "새우리"), ("1702", "서동"), ("1703", "금사동"), ("1704", "금정중앙"),
+            ("1707", "장전동"), ("1709", "청룡동"), ("1711", "구서"), ("1712", "금성동"),
+            ("1714", "금샘"), ("1715", "금정"),
+        ]
+    ],
+}
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/120.0 Safari/537.36",
@@ -100,7 +111,19 @@ def main():
     banks = []
     for r1, r2 in REGIONS:
         print(f"[목록] {r1} {r2}")
-        lst = parse_bank_list(get(f"{BASE}/list.do", {"r1": r1, "r2": r2}))
+        try:
+            lst = parse_bank_list(get(f"{BASE}/list.do", {"r1": r1, "r2": r2}))
+        except Exception as e:
+            print(f"  목록 페이지 오류: {e}", file=sys.stderr)
+            lst = []
+        if not lst:
+            # 목록 페이지가 막힌 날: 어제 장부의 금고 명단 → 그것도 없으면 기본 명단
+            lst = [dict(b) for b in old.get("banks", []) if b.get("region") == r2]
+            lst = lst or [dict(b) for b in FALLBACK_BANKS.get((r1, r2), [])]
+            for b in lst:
+                for k in ("dep", "sav", "prev", "prevDate"):
+                    b.pop(k, None)
+            print(f"  → 저장해둔 명단 {len(lst)}곳으로 진행")
         for b in lst:
             b["region"] = r2
         banks += lst
